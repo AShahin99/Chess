@@ -170,14 +170,17 @@ function slidelegals(game, curPos, rank) {
 
     let squares = slidesquares(rank);
     for (let sq of squares) {
-        let csq = [x + sq[0], y + sq[1]]                                    // candidate square
+        let csq = [x + sq[0], y + sq[1]]
+        if(!(csq[0] in boardrange) || !(csq[1] in boardrange)){             //If out of board range 
+            continue;
+        }                                    
         while ((game.board[csq[0]][csq[1]]) == undefined /* if candidate square is empty */ || (game.board[csq[0]][csq[1]].rank + rank) % 2 === 1 /* if piece of opposite color */ ) {
             legals.push([csq[0],csq[1]]);                                   // push to legals
             if(game.board[csq[0]][csq[1]]) {                                // if candidate square is not empty (contains an opposite color piece), stop.
                 break;
             }
             csq = [csq[0] + sq[0],csq[1] + sq[1]];                          // keep moving in the same direction until a piece or edge of board is found
-            if(!(csq[0] in boardrange) || !(csq[1] in boardrange)){         //If out of board range 
+            if(!(csq[0] in boardrange) || !(csq[1] in boardrange)){         // if new candidate square out of board range 
                 break;
             }
         }
@@ -245,4 +248,9 @@ module.exports = { Game };
 /* Testing */
 
 game = new Game();
+game.move('e4')
+game.move('e5')
+game.move('Be2')
+game.move('Qe7')
+
 game.display();
