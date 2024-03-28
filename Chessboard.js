@@ -8,6 +8,8 @@ function Game(fen) { // TO DO: extract remaining information from FEN string
     let fenPos = fenArray(fen)[0]; // extract the board position from the Fen string
     this.board = createboard(fenPos);
     this.movecount = 0;
+    this.wK = [0,4];
+    this.bK = [7,4];
 }
 Game.prototype.display = function () {
     for (let i = 0; i < 8; i++) {
@@ -42,8 +44,8 @@ Game.prototype.move = function (move) {
 Game.prototype.getmovecount = function () {
     return this.movecount;
 }
-Game.prototype.getpiece = function (position) {
-    return this.board[position[0]][position[1]];
+Game.prototype.inCheck= function (){ // TO DO: Add option to check for double check
+    return inCheck(this);
 }
 
 /* Piece */
@@ -54,79 +56,47 @@ function Piece(position, rank) {
     this.legalmoves = [];
 }
 
-/* Helpers */
-
-function fenArray(fen) {
-    if (!(fen)) {
-        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    }
-    return fen.split(" ")
-}
-function createboard(fen) {
-    let board = new Array(8);       // Create 8 x 8 array
-    for (let i = 0; i < 8; i++) {
-        board[i] = new Array(8);
-    }
-
-    let rank = 0;
-    let file = 0;
-
-    for (let elt of fen) {          // Sort through Fen string and populate board
-        file = file % 8;
-        let space = parseInt(elt);  // convert fen character to a number
-        if (elt === "/") {
-            rank++;
-        } else if (!(isNaN(space))) { // if elt is a number
-            file += space; // skip square
-        } else {
-            board[7 - rank][file] = new Piece([7 - rank, file], dict[elt]); //set new piece with current location in array and rank from dict
-            file++; // move to next square
-        }
-    }
-    return board;
-}
-
 /* Legals */
 
 function piecesearch(game, targetposition, rank) {
     for (let i = 0; i < 8; i++) {
         for(let j = 0; j < 8; j++){
-            if (game.board[i][j] && game.board[i][j].rank == rank) { // Search board for piece with the same rank id as intended active piece
-                legals = findlegals(game, [i,j], rank); // Calculate legal moves for candidate pieces w/ same rank id
-                if (isincluded(targetposition, legals)) { // If the move is legal for a candiate piece, return
+            if (game.board[i][j] && game.board[i][j].rank == rank) {    // Search board for piece with the same rank id as intended active piece
+                legals = findlegals(game, [i,j], rank);                 // Calculate legal moves for candidate pieces w/ same rank id
+                if (isincluded(targetposition, legals)) {               // If the move is legal for a candiate piece, return
                     return [i,j];
                 }
             }
         }
     }
-    return "Not Legal";
+    return "Piecesearch failed"; 
 }
-function findlegals(game, position, rank) {
+function findlegals(game, curPos, rank) {
     if (rank == 10 || rank == 11) {
-        return pawnlegals(game, position, rank);
+        return pawnlegals(game, curPos, rank);
     } else if (rank == 20 || rank == 21) {
-        return knightlegals(game, position, rank);
+        return knightlegals(game, curPos, rank);
     } else if (rank == 30 || rank == 31 || rank == 40 || rank == 41 || rank == 50 || rank == 51) {
-        return slidelegals(game, position, rank)
+        return slidelegals(game, curPos, rank)
     } else {
-        return [];
+        return undefined;
     }
 }
-function pawnlegals(game, curPos, rank) { // TO DO: Tidy up and add En passant
+function pawnlegals(game, curPos, rank) {                               // TO DO: Tidy up and add En passant
     let legals = [];
     rank = rank % 2; 
     x = curPos[0];
     y = curPos[1];
 
-    if(x === 0 ||  x === 7){ // Pawns should not be found on first or last rank
-        return "error"
+    if(x === 0 ||  x === 7){                                            // Pawns should not be found on first or last rank
+        return 'Why is a Pawn Here?' 
     }
 
-    up = 1 - (rank % 2) * 2 // Up or down a rank depending on color
-    onStartingRank = ((x + 3*(rank)) % 8 === 1) // Checks if on starting rank depending on color
+    up = 1 - (rank % 2) * 2                                             // Up or down a rank depending on color
+    onStartingRank = ((x + 3*(rank)) % 8 === 1)                         // Checks if on starting rank depending on color
 
     // Pawn pushes
-    if (!game.board[x + up][y]) { // If square ahead is empty
+    if (!game.board[x + up][y]) {                                       // If square ahead is empty
         legals.push([x + up,y]);
         if (!game.board[x + 2*up][y] /* If two squares ahead are empty */ && (onStartingRank)) {
             legals.push([x + 2*up,y]);
@@ -151,9 +121,9 @@ function knightlegals(game, curPos, rank) {
     let x = curPos[0], y = curPos[1];
     let boardrange = [0, 1, 2, 3, 4, 5, 6, 7];
 
-    let knightsquares = knightjumps();
+    let squares = knightjumps();
 
-    for (let sq of knightsquares) {
+    for (let sq of squares) {
         if ((x + sq[0] in boardrange) && (y + sq[1] in boardrange)){
             // Check if knight jump in bounds
             if(!(game.board[x + sq[0]][y + sq[1]]) || (rank + game.board[x + sq[0]][y + sq[1]].rank) % 2 == 1){
@@ -187,9 +157,120 @@ function slidelegals(game, curPos, rank) {
     }
     return legals;
 }
+function kinglegals(game, rank) {
+    let legals = [];
+    let kPos = [game.wK[0]*(1-game.movecount) + game.bK[0]*game.movecount, game.wK[1]*(1-game.movecount) + game.bK[1]*game.movecount] // King is the color of the side that is about to move, i.e. white if White's move.
+    let x = kPos[0], y = kPos[1];
+    let boardrange = [0, 1, 2, 3, 4, 5, 6, 7];
+    
+    let squares = slidesquares(rank);
 
+    for (let sq of squares) {
+        if ((x + sq[0] in boardrange) && (y + sq[1] in boardrange)){ // Check if move is in board range
+            if(!(game.board[x + sq[0]][y + sq[1]])){ // Check if empty
+                legals.push([x + sq[0], y + sq[1]]);
+            } else if ((rank + game.board[x + sq[0]][y + sq[1]].rank) % 2 == 1){ // Check if occupied by a different colored piece
+                if(!(inCheck(game,[x + sq[0], y + sq[1]]))){ // if King will not be in check in candidate square
+                    legals.push([x + sq[0], y + sq[1]]);
+                }        
+            }
+        } 
+    }
+    return legals;
+}
+function inCheck(game, kPos){
+    let squares = kSight(game,kPos) // set of squares that can be checking the king in question
+    let checkers = 0;
+    if (!kPos){
+        kPos = [game.wK[0]*(1-game.movecount) + game.bK[0]*game.movecount, game.wK[1]*(1-game.movecount) + game.bK[1]*game.movecount]
+    }
+    for(list of squares){ 
+        for(sq of list){
+            if(game.board[sq[0]][sq[1]]){ // if not empty
+                if((game.board[sq[0]][sq[1]].rank + game.board[kPos[0]][kPos[1]].rank) % 2 === 1){ // if occupied by a piece of a different color
+                    if(seesKing(game, sq, kPos)){
+                        checkers = checkers + 1;
+                    }
+                }
+            }
+        }
+    }
+    return checkers; // return number of times king is checked
+}
+function kSight(game,kPos){ // To check if the king is in check - search potential checking squares from King's position
+    if (!kPos){
+        kPos = [game.wK[0]*(1-game.movecount) + game.bK[0]*game.movecount, game.wK[1]*(1-game.movecount) + game.bK[1]*game.movecount]
+    }    
+    ranks = [20, 50] // Search from King's position as a Knight and a Queen
+    checkers = [];
+    for(rank of ranks){
+        checkers.push(findlegals(game, kPos, rank + (game.board[kPos[0]][kPos[1]].rank % 2))) // Checks legal squares form king's position from a Queen and Kinght of the same color's perspective
+    }
+    return checkers;  
+}
+function seesKing(game, curPos, kPos){ // checks if piece in curPos can see the King in question
+    if (!kPos){
+        kPos = [game.wK[0]*(1-game.movecount) + game.bK[0]*game.movecount, game.wK[1]*(1-game.movecount) + game.bK[1]*game.movecount]
+    }
+    let rank = game.board[curPos[0]][curPos[1]].rank;
+    let sightRange = findlegals(game,curPos,rank);
+    return isincluded(kPos,sightRange);
+}
+function exposesKing(game, curPos, move, rank){ // To check if a piece moving would expose King
+    // If there's a piece, save its rank 
+    let rankMem = 0;
+    if(game.board[move[0]][move[1]]){
+        rankMem = game.board[move[0]][move[1]].rank;
+    }
+
+    // Make move
+    game.board[move[0]][move[1]] = game.board[curPos[0]][curPos[1]];
+    game.board[curPos[0]][curPos[1]] = null; 
+    
+    game.display();
+    // Check if move puts your king
+    let exposed = inCheck(game) > 0;
+
+    // Unmake move
+    game.board[curPos[0]][curPos[1]] = null
+    if(rankMem !== 0){
+        game.board[curPos[0]][curPos[1]] = new Piece([curPos[0], curPos[1]], rank)
+    }
+    game.board[move[0]][move[1]] = new Piece([move[0], move[1]], rankMem)
+
+    return exposed;
+}
 /* Helpers */
 
+function fenArray(fen) {
+    if (!(fen)) {
+        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    }
+    return fen.split(" ")
+}
+function createboard(fen) {
+    let board = new Array(8);       // Create 8 x 8 array
+    for (let i = 0; i < 8; i++) {
+        board[i] = new Array(8);
+    }
+
+    let rank = 0;
+    let file = 0;
+
+    for (let elt of fen) {          // Sort through Fen string and populate board
+        file = file % 8;
+        let space = parseInt(elt);  // convert fen character to a number
+        if (elt === "/") {
+            rank++;
+        } else if (!(isNaN(space))) { // if elt is a number
+            file += space; // skip square
+        } else {
+            board[7 - rank][file] = new Piece([7 - rank, file], dict[elt]); //set new piece with current location in array and rank from dict
+            file++; // move to next square
+        }
+    }
+    return board;
+}
 function sanCoor(string, movecount) { // returns the target position and the rank id of the active piece
     let pawnmove = /^[a-h]([x][a-h])?[1-8]([+#])?/;
     if (string[string.length - 1] == "+" || string[string.length - 1] == "#") { // if check or mate, remove trailing # or +
@@ -209,7 +290,7 @@ function slidesquares(rank) {
         return [[1, 1], [1, -1], [-1, 1], [-1, -1]];
     } else if (rank == 40 || rank == 41) {
         return [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    } else if (rank == 50 || rank == 51) {
+    } else if (rank == 50 || rank == 51 || rank == 60 || rank == 61) {
         return [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
     }
 }
@@ -224,7 +305,7 @@ function knightjumps() {
         }
     }
     return knightsquares;
-} 
+}
 function isincluded(move, list) {
     if (list == [] || list == undefined) {
         return false;
@@ -243,14 +324,20 @@ function isincluded(move, list) {
 }
 
 /* Exporting */
+
 module.exports = { Game };
 
 /* Testing */
 
 game = new Game();
+
 game.move('e4')
 game.move('e5')
-game.move('Be2')
-game.move('Qe7')
+game.move('f4')
+game.move('Qh4')
+game.move('h3')
 
+game.board[1][4] = new Piece([1,4],21);
 game.display();
+console.log(inCheck(game))
+//console.log(exposesKing(game,[2,6],[3,6],10));
