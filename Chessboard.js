@@ -13,10 +13,6 @@ function Game(fen) { // TO DO: extract remaining information from FEN string
     this.movecount = 0;
     this.altmovecount = 0;
     this.inCheck = 0;
-
-    this.wK = getKing(this.board,0);
-    this.bK = getKing(this.board,1); 
-
 }
 Game.prototype.move = function (moves) {
     
@@ -29,17 +25,31 @@ Game.prototype.move = function (moves) {
     let endrank = moveCoor[0];
     let endfile = moveCoor[1];
     let rankid = moveCoor[2];
+    let castling = moveCoor[3];
 
     runlegals(board,this);
 
-    let startCoor= piecesearch(board, [endrank,endfile], rankid); // use piecesearch to find candidate active pieces for given move
+    let startCoor = piecesearch(board, [endrank,endfile], rankid); // use piecesearch to find candidate active pieces for given move
     let startrank = startCoor[0];
     let startfile = startCoor[1];
 
+    this.castling = castlingUpdate(board, [startrank,startfile],rankid);
+    
     board[startrank][startfile].position = [endrank,endfile]; // update piece position
     board[endrank][endfile] = board[startrank][startfile]; // update end square reference
-
     board[startrank][startfile] = null; // update start square
+
+    if(castling){ // if castling, move rooks too
+        if(endfile == 6){ // short castle
+            board[0+7*(rankid%2)][7].position = [0+7*(rankid%2),5]; // update piece position
+            board[0+7*(rankid%2)][5] = board[0+7*(rankid%2)][7]; // update end square reference
+            board[0+7*(rankid%2)][7] = null; // update start square
+        } else if(endfile == 2){ // long castle
+            board[0+7*(rankid%2)][0].position = [0+7*(rankid%2),3]; // update piece position
+            board[0+7*(rankid%2)][3] = board[0+7*(rankid%2)][0]; // update end square reference
+            board[0+7*(rankid%2)][0] = null; // update start square
+        }
+    }
 
     this.movecount = (this.movecount + 1) % 2;
     
@@ -59,10 +69,10 @@ function Piece(position, rank) {
 /* Legals */
 
 function runlegals(board){
-    for(let row of board){
-        for(let col of row){
-            if(col){
-                col.legalmoves = findlegals(board,col.position,col.rank);
+    for(let i = 0; i < 8; i++){
+        for(let j = 0; j < 8; j++){
+            if(board[i][j]){
+                board[i][j].legalmoves = findlegals(board,[i,j],board[i][j].rank);
             }
         }
     }
@@ -199,16 +209,26 @@ function kinglegals(board, curPos, rank) {
     
     let squares = squaresgen(rank);
 
+    // Normal Moves
     for (let sq of squares) {
         if ((x + sq[0] in boardrange) && (y + sq[1] in boardrange)) { // Check if move is in board range
             if(!(board[x + sq[0]][y + sq[1]]) || (board[x + sq[0]][y + sq[1]].rank + rank) % 2 === 1) { // Check if empty or occupied by opposing piece
-                
                 if(!(kSight(altmove([x,y], [x + sq[0],y + sq[1]], resetAlt(board)),rank))){
                         legals.push([x + sq[0],y + sq[1]]);
                 }
             }
         }
     }
+
+    // Castling
+
+    if(canCastle(board,[0 + 7*(rank%2), 2],rank)){ // If can castle long
+        legals.push([0 + 7*(rank%2), 2]);
+    } 
+    if(canCastle(board,[0 + 7*(rank%2), 6],rank)){ // If can castle short
+        legals.push([0 + 7*(rank%2), 6]);
+    }
+
     return legals;
 }
 
@@ -217,8 +237,7 @@ function kinglegals(board, curPos, rank) {
 function kSight(board,rank) {
     return kSightStr8(board, rank) || kSightDiag(board,rank) || kSightL(board, rank);
 }
-
-function kSightStr8(board, rank){
+function kSightStr8(board, rank) {
     let legals = [];
     let x = getKing(board,rank)[0], y = getKing(board, rank)[1];
     let boardrange = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -245,7 +264,7 @@ function kSightStr8(board, rank){
     }
     return legals.length > 0;
 }
-function kSightDiag(board, rank){
+function kSightDiag(board, rank) {
     let legals = [];
     let x = getKing(board,rank)[0], y = getKing(board, rank)[1];
     let boardrange = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -270,7 +289,7 @@ function kSightDiag(board, rank){
     }
     return legals.length > 0;
 }
-function kSightL(board, rank){
+function kSightL(board, rank) {
     let legals = [];
     let x = getKing(board,rank)[0], y = getKing(board, rank)[1];
     let boardrange = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -289,6 +308,54 @@ function kSightL(board, rank){
     return legals.length > 0;
 }
 
+/* Castling Function */
+
+function castlingUpdate(board, curPos, rankid){
+    
+    let castlingArray = board[8];
+    if(!(Math.round(rankid/10) == 4 || Math.round(rankid/10) == 6)) { // If not a rook or a king move, return
+        return castlingArray;
+    }
+
+    x = curPos[0];
+    y = curPos[1];
+
+    if(y == 7 && castlingArray[1][rankid%2] == 1){ // Queenside rook and hasn't moved
+        castlingArray[1][rankid%2] = 0;
+    } else if(y == 0 && castlingArray[2][rankid%2] == 1){ // Kingside rook and hasn't moved
+        castlingArray[2][rankid%2] = 0;
+    } else if(y == 4 && x == 0 + (rankid%2)*7 && castlingArray[0][rankid%2] == 1){ // White or black king and hasn't moved
+        castlingArray[0][rankid%2] = 0;
+        castlingArray[1][rankid%2] = 0
+        castlingArray[2][rankid%2] = 0
+    }
+
+    return castlingArray; 
+}
+function canCastle(board, targetposition, rankid){
+    let castlingArray = board[8];
+
+    if(targetposition[1] == 6 && castlingArray[1][rankid%2] == 1) { // Short
+        return safePassage(board, rankid, false);
+    } else if (targetposition[1] == 2 && castlingArray[2][rankid%2] == 1) { // Long
+        return safePassage(board, rankid, true);
+    }
+    return false;
+}
+function safePassage(board, rankid, longCastle){
+    let sq = [0,1 - (2*longCastle)]; // if longCastle, move westward
+    let kPos = [0+(rankid%2)*7, 4];
+
+    if(longCastle && board[kPos[0]][kPos[1]+3*sq[1]]){ // if piece in the way for longcastle
+        return false;
+    }
+    if(!kSight(board,rankid) && !board[kPos[0]][kPos[1]+sq[1]] && !kSight(altmove(kPos,[kPos[0],kPos[1]+sq[1]],board),rankid)){ // If next two squares to king are empty and wont pass through checks
+        if(!board[kPos[0]][kPos[1]+2*sq[1]] && !kSight(altmove(kPos,[kPos[0],kPos[1]+2*sq[1]],board),rankid)){
+            return true;
+        }
+    }
+    return false;
+}
 /* Board Creation Helpers */
 
 function fenArray(fen) {
@@ -298,11 +365,11 @@ function fenArray(fen) {
     return fen.split(" ")
 }
 function createboard(fen) {
-    let board = new Array(8);       // Create 8 x 8 array
+    let board = new Array(9);       // Create 8 x 8 array
     for (let i = 0; i < 8; i++) {
         board[i] = new Array(8);
     }
-
+    board[8] = [[1,1],[1,1],[1,1]];
     let rank = 0;
     let file = 0;
 
@@ -349,7 +416,7 @@ function resetAlt(ogboard){
     return createboard(getfen(ogboard));
 }
 function display (board) {
-    console.log("=======================");
+    console.log(" ====================== ");
     for (let i = 0; i < 8; i++) {
         boardstr = "";
         for (let j = 0; j < 8; j++) {
@@ -361,7 +428,7 @@ function display (board) {
         }
         console.log(boardstr);
     }
-    console.log("=======================");
+    console.log(" ====================== ");
 }
 
 /* Move-making Helpers */
@@ -373,11 +440,15 @@ function sanCoor(string, movecount) { // returns the target position and the ran
     }
 
     let x = string.charCodeAt(string.length - 2) - 97, y = string[string.length - 1] - 1; // extract target square (last two chars)
-
+    
     if (pawnmove.test(string)) { // If pawn move (pawns are not labelled in SAN)
-        return [y, x, 10 + (movecount % 2)]; // returns [rank, file, rank id]
+        return [y, x, 10 + (movecount % 2),false]; // returns [rank, file, rank id, castling]
+    } else if (string == "O-O-O"){ //long castle
+        return [0+7*(movecount%2), 2, 60 + (movecount % 2), true];
+    } else if (string == "O-O"){ //short castle
+        return [0+7*(movecount%2), 6, 60 + (movecount % 2), true]
     } else { // If any other move, use first char & move count to identify piece
-        return [y, x, dict[string[0]] + (movecount % 2)];
+        return [y, x, dict[string[0]] + (movecount % 2),false];
     }
 }
 function isincluded(moves, list) {
@@ -429,14 +500,17 @@ function altmove(strtmove,endmove, board){
     altboard[strtmove[0]][strtmove[1]] = null; // update start square
     return altboard;
 }
+
 /* Testing */
 function test(){
     let game = new Game();
     let board = game.board;
-    game.move(["e4","f6","d3",'a5',"Qh5"])
+    game.move(["e4","f6","d3",'a5',"Qh5","g6","Nf3","Bg7","Be2","b6","Be3","c6","Nc3","b5","Nb1","a4"])
+    board[1][4] = null;
+    board[4][7] = new Piece([4,7], 51);
+    game.move(["Nc3","Ra7","O-O-O","e6","h3","Ne7","g3","O-O"])
     runlegals(board);
     display(board);
-    console.log(board[6][4])
 }
 test();
 
