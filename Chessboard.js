@@ -40,6 +40,8 @@ Game.prototype.move = function (moves) {
 
     if(castling){ // to move Rooks; castling is false or equal to target file of king.
         board = movePieces(board, 0+7*(rankId%2), 7-(targetFile-6)*(7/4), 0+7*(rankId%2), targetFile/2 + 2);
+    } else if (isEnPassant(board, [targetRank, targetFile], [startingRank, startingFile], rankId)){
+        board[startingRank][targetFile] = null;
     }
     this.movecount = (this.movecount + 1) % 2;
     this.castling = castlingUpdate(board, [startingRank,startingFile],rankId);
@@ -215,6 +217,13 @@ function isPawnJump([targetRank, targetFile], [startingRank, startingFile], rank
     let isJump = ((targetRank - startingRank)%2 == 0) && (targetFile == startingFile);
 
     return isJump && isPawnMove;
+}
+function isEnPassant(board, [targetRank, targetFile], [startingRank, startingFile], rankId){
+    let isPawnMove = Math.round(rankId/10) == 1;
+    let isCapture = ((targetFile - startingFile)%2 == 1);
+    let isInPassing = (board[startingRank][targetFile]) && (Math.round(board[startingRank][targetFile].rank/10) == 1);
+    
+    return (isPawnMove && isCapture && isInPassing);
 }
 /* King Legals */
 
@@ -584,7 +593,9 @@ function test(){
     let game = new Game();
     let board = game.board;
 
-    game.move(["e4","h6","e5","f5","d4","h5"]);
+    game.move(["e4","h6","e5","f5"]);
+    display(board);
+    game.move(["exf6"]);
     display(board);
     runlegals(board);
     console.log(board[4][4]);
