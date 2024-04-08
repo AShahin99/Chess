@@ -26,7 +26,6 @@ Game.prototype.move = function (moves) {
     let parsedSan = sanCoor(moves[0][0], this.movecount); // Parse SAN move into below array form
     let targetRank = parsedSan[0], targetFile = parsedSan[1], rankId = parsedSan[2], startingRank = parsedSan[3], startingFile= parsedSan[4], castling = parsedSan[5];
 
-    console.log(parsedSan);
     let searchedCoor = piecesearch(board, [targetRank, targetFile], [startingRank, startingFile], rankId); // use piecesearch to find candidate active pieces for given move
     if(!searchedCoor){
         return console.log("Illegal Move");
@@ -34,9 +33,12 @@ Game.prototype.move = function (moves) {
 
     startingRank = settleStartingCoor(searchedCoor, startingRank, startingFile)[0];
     startingFile = settleStartingCoor(searchedCoor, startingRank, startingFile)[1];      
+    
+    enPassantUpdate(board,[targetRank, targetFile], [startingRank, startingFile], rankId);
+    
     board = movePieces(board, startingRank, startingFile, targetRank, targetFile);
 
-    if(castling){ // castling is false or target file of king.
+    if(castling){ // to move Rooks; castling is false or equal to target file of king.
         board = movePieces(board, 0+7*(rankId%2), 7-(targetFile-6)*(7/4), 0+7*(rankId%2), targetFile/2 + 2);
     }
     this.movecount = (this.movecount + 1) % 2;
@@ -173,7 +175,7 @@ function squaresgen(rank) {
 
 /* Pawn Legals */
 
-function pawnlegals(board, curPos, rank, hello) {                               // TO DO: Tidy up and add En passant
+function pawnlegals(board, curPos, rank) {                               // TO DO: Tidy up and add En passant
     let legals = [];
     let x = curPos[0];
     let y = curPos[1];
@@ -194,11 +196,26 @@ function pawnlegals(board, curPos, rank, hello) {                               
             if (y + sq < 8 && y + sq > 0) /* Remove cases at edge of board*/ {
                 legals.push([x + up, y + sq]);
             }
+        } else if((board[9+((rank+1)%2)][y + sq]) == 1) {
+                legals.push([x + up, y + sq]);
         }
     }
     return legals;
 }
+function enPassantUpdate(board,[targetRank, targetFile], [startingRank, startingFile], rankId){
+    board[9] = new Array(8).fill(0);
+    board[10] = new Array(8).fill(0);
 
+    if(isPawnJump([targetRank, targetFile], [startingRank, startingFile], rankId)){
+        board[9+(rankId%2)][startingFile] = 1;
+    }
+}
+function isPawnJump([targetRank, targetFile], [startingRank, startingFile], rankId) {
+    let isPawnMove = (Math.round(rankId/10) == 1)
+    let isJump = ((targetRank - startingRank)%2 == 0) && (targetFile == startingFile);
+
+    return isJump && isPawnMove;
+}
 /* King Legals */
 
 function kinglegals(board, curPos, rank) {
@@ -372,8 +389,8 @@ function createboard(fen) {
     }
 
     board[8] = [[1,1],[1,1],[1,1]];
-    board[9] = new Array(8).fill(1);
-    board[10] = new Array(8).fill(1);
+    board[9] = new Array(8).fill(0);
+    board[10] = new Array(8).fill(0);
 
     let rank = 0;
     let file = 0;
@@ -466,7 +483,7 @@ function rankIdFromSan(string, moveClass, moveCount){
     if(moveClass == 1 || moveClass == 2){ // Pawn Move
         return (10 + (moveCount % 2));
     } else if (moveClass >= 3 && moveClass <= 6){
-        return (dict[string[0]]);
+        return (dict[string[0]] +(moveCount % 2) );
     } else if (moveClass == 7){
         return (60 + (moveCount % 2));
     }
@@ -567,11 +584,14 @@ function test(){
     let game = new Game();
     let board = game.board;
 
-    game.move(["d4"])
+    game.move(["e4","h6","e5","f5","d4","h5"]);
     display(board);
+    runlegals(board);
+    console.log(board[4][4]);
 }
 
 test();
+
 
 /* Notes *
 * TO DO: 
